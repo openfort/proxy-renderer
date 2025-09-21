@@ -15,6 +15,13 @@ RUN apt-get update && \
         python3-dev && \
     rm -rf /var/lib/apt/lists/*
 
+# Install va media driver for intel
+RUN apt-get update && \
+    apt-get install -y \
+        intel-media-va-driver \
+        vainfo && \
+    rm -rf /var/lib/apt/lists/*
+
 # Set working directory
 WORKDIR /app
 RUN mkdir -p /app/RAW_Data

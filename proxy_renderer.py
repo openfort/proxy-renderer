@@ -3,6 +3,10 @@ import os
 from pathlib import Path
 import json
 import time
+try:
+    import grp
+except:
+    pass
 
 def get_proxy_path(file_dir):
     proxy_path = os.path.dirname(file_dir) + '/Proxy/' + os.path.basename(file_dir).split('.')[0] + '.mov'
@@ -28,36 +32,17 @@ def get_timecode(file_path):
         if "timecode" in tags:
             return tags["timecode"]
     return None
-
-def get_ffmpeg_encoders():
-    def test_encoder(encoder):
-        cmd = [
-            "ffmpeg", "-hide_banner", "-f", "lavfi",
-            "-i", "testsrc=duration=1:size=1280x720:rate=30",
-            "-c:v", encoder, "-f", "null", "-"
-        ]
-        result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        return result.returncode == 0
-
-    hw_encoders = ["hevc_nvenc", "hevc_qsv", "hevc_amf"]
-
-    supported = [e for e in hw_encoders if test_encoder(e)]
-    print("Supported encoders:", supported)
-    return supported
-
-def detect_hw_encoder(encoders_list):
-    if "hevc_nvenc" in encoders_list:
-        return "hevc_nvenc"
-    elif "hevc_qsv" in encoders_list:
-        return "hevc_qsv"
-    elif "hevc_amf" in encoders_list:
-        return "hevc_amf"
-    else:
-        return "libx265"  # fallback to software
     
 def render_proxy(input_file):
     folder_path = Path(os.path.dirname(input_file) + '/Proxy')
     folder_path.mkdir(parents=True, exist_ok=True)
+    try:
+        gid = grp.getgrnam("users").gr_gid
+        os.chown(folder_path, -1, gid)
+        os.chmod(folder_path, 0o770)
+    except:
+        pass
+
     output_file = get_proxy_path(input_file)
     if not os.path.exists(input_file):
         print("File does not exist!")
@@ -68,15 +53,12 @@ def render_proxy(input_file):
 
     timecode = get_timecode(input_file)
 
-    encoders_list = get_ffmpeg_encoders()
-    hw_encoder = detect_hw_encoder(encoders_list)
-    print(hw_encoder, output_file)
-
-    result = subprocess.run([
+    cmd = [
         "ffmpeg",
+        '-hwaccel', 'vaapi',
         "-i", input_file,
-        "-vf", "scale=1920:-2",      # resize to Full HD
-        "-c:v", hw_encoder,
+        "-c:v", 'hevc_vaapi',
+        "-vf", 'scale=1920:-2,format=nv12,hwupload',      # resize to Full HD
         "-rc:v", "vbr",
         "-b:v", "2M",                # target bitrate
         "-preset", "slow",           # encoding speed vs efficiency
@@ -84,11 +66,21 @@ def render_proxy(input_file):
         "-c:a", "pcm_s16le",         # uncompressed audio
         "-timecode", timecode,       # preserve TC from metadata stream
         output_file
-        ],
+        ]
+
+    result = subprocess.run(cmd,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True
     )
+    print('hevc_vaapi', output_file)
+    try:
+        gid = grp.getgrnam("users").gr_gid
+        os.chown(output_file, -1, gid)
+        os.chmod(output_file, 0o770)
+    except:
+        pass
+
     if result.returncode:
         print("STDOUT:", result.stdout)
         print("STDERR:", result.stderr)
@@ -110,14 +102,16 @@ def get_render_list(dir):
                 render_list.append(Path(p))
     return render_list
 
-while(True):
-
-    RAW_Data_dir = 'RAW_Data'
-
+RAW_Data_dir = 'RAW_Data'
+render_list = get_render_list(RAW_Data_dir)
+while(len(render_list)):
+    for p in render_list:
+        try:
+            render_proxy(p)
+        except:
+            print(f'render failed: "{p}"')
+    print('wait 1m')
+    time.sleep(60)
     render_list = get_render_list(RAW_Data_dir)
 
-    for p in render_list:
-        render_proxy(p)
-
-    print('wait')
-    time.sleep(60)
+print('Done!')
