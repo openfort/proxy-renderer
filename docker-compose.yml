@@ -3,6 +3,6 @@ services:
     build: .
     working_dir: /app
     volumes:
-      - /mnt/user/Video_RAW:/app/RAW_Data
+      - media:/app/RAW_Data
     devices:
       - "/dev/dri/renderD128:/dev/dri/renderD128:rwm"
