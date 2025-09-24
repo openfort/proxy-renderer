@@ -31,8 +31,8 @@ def get_timecode(file_path):
         tags = stream.get("tags", {})
         if "timecode" in tags:
             return tags["timecode"]
-    return None
-    
+    return "00:00:00:00"
+
 def render_proxy(input_file):
     folder_path = Path(os.path.dirname(input_file) + '/Proxy')
     folder_path.mkdir(parents=True, exist_ok=True)
